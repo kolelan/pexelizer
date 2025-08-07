@@ -185,29 +185,35 @@ def pixelate_image(image, block_width=10, block_height=10, averaging_method='mea
                 block_array = np.stack([block_array]*3, axis=-1)
             elif block_array.shape[-1] == 4:  # RGBA -> RGB
                 block_array = block_array[..., :3]
-            elif block_array.shape[-1] == 1:  # Single channel -> RGB
-                block_array = np.repeat(block_array, 3, axis=-1)
+
+            # Убедимся, что значения в пределах 0-255
+            block_array = np.clip(block_array, 0, 255).astype(np.uint8)
 
             # Выбор метода усреднения
             if mode == 'grayscale':
-                if averaging_method == 'gray-rgb':
-                    avg_color = average_block_gray_rgb(block_array)
-                elif averaging_method == 'gray-wav':
-                    avg_color = average_block_gray_wav(block_array)
-                elif averaging_method == 'gray-hsv-v':
-                    avg_color = average_block_gray_hsv_v(block_array)
-                elif averaging_method == 'gray-hsv-s':
-                    avg_color = average_block_gray_hsv_s(block_array)
-                elif averaging_method == 'gray-hsv-h':
-                    avg_color = average_block_gray_hsv_h(block_array)
-                elif averaging_method == 'gray-lab-l':
-                    avg_color = average_block_gray_lab_l(block_array)
-                elif averaging_method == 'gray-tc':
-                    avg_color = average_block_gray_tc(block_array)
-                elif averaging_method == 'gray-mb':
-                    avg_color = average_block_gray_mb(block_array)
+                if averaging_method == 'abdc':  # Особый случай для abdc в grayscale
+                        color = average_block_abdc(block_array)
+                        gray = int(0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2])
+                        avg_color = (gray, gray, gray)
                 else:
-                    avg_color = average_block_gray_wav(block_array)
+                    if averaging_method == 'gray-rgb':
+                        avg_color = average_block_gray_rgb(block_array)
+                    elif averaging_method == 'gray-wav':
+                        avg_color = average_block_gray_wav(block_array)
+                    elif averaging_method == 'gray-hsv-v':
+                        avg_color = average_block_gray_hsv_v(block_array)
+                    elif averaging_method == 'gray-hsv-s':
+                        avg_color = average_block_gray_hsv_s(block_array)
+                    elif averaging_method == 'gray-hsv-h':
+                        avg_color = average_block_gray_hsv_h(block_array)
+                    elif averaging_method == 'gray-lab-l':
+                        avg_color = average_block_gray_lab_l(block_array)
+                    elif averaging_method == 'gray-tc':
+                        avg_color = average_block_gray_tc(block_array)
+                    elif averaging_method == 'gray-mb':
+                        avg_color = average_block_gray_mb(block_array)
+                    else:
+                        avg_color = average_block_gray_wav(block_array)
 
             elif mode == 'black-white':
                 if averaging_method == 'bin-tc':
@@ -234,7 +240,8 @@ def pixelate_image(image, block_width=10, block_height=10, averaging_method='mea
                     avg_color = average_block_abdc(block_array)
                 else:
                     avg_color = average_block_meav(block_array)
-
+            # Приведение к целым числам
+            avg_color = tuple(int(c) for c in avg_color)
             draw.rectangle(box, fill=avg_color)
 
     return pixelated
@@ -534,7 +541,23 @@ def main():
         output_ext = os.path.splitext(args.image_path)[1][1:] or 'png'
 
     # Save pixelated image
-    output_path = f"{output_filename}.{output_ext}"
+    if args.out_type:
+        output_ext = args.out_type
+    else:
+        output_ext = os.path.splitext(args.image_path)[1][1:] or 'png'
+
+    if args.out_name:
+        output_filename = f"{args.out_name}.{output_ext}"
+    else:
+        base_name = os.path.splitext(os.path.basename(args.image_path))[0]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        prefix = args.out_prefix if args.out_prefix else 'pic_'
+        output_filename = f"{prefix}{base_name}_{timestamp}.{output_ext}"
+
+    output_path = output_filename  # Убираем автоматическое добавление .png
+    output_dir = os.path.dirname(output_path)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     pixelated.save(output_path)
     print(f"Pixelated image saved to {output_path}")
 
