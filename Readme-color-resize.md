@@ -12,7 +12,7 @@ python .\pixelate.py .\example\girl.png --width 500 --point-w 15 --out-name "exa
 
 | Исходное изображение | Блок 5x5 | Блок 10x10 | Блок 15x15 |
 |----------------------|---------|-----------|-----------|
-| ![Исходное изображение](https://github.com/kolelan/pexelizer/example/girl.png) | ![girl-w500-p5](https://github.com/kolelan/pexelizer/example/girl/girl-w500-p5.png) | ![girl-w500-p10](https://github.com/kolelan/pexelizer/example/girl/girl-w500-p10.png) | ![girl-w500-p15](https://github.com/kolelan/pexelizer/example/girl/girl-w500-p15.png) |
+| ![Исходное изображение](https://github.com/kolelan/pexelizer/tree/main/example/girl.png) | ![girl-w500-p5](https://github.com/kolelan/pexelizer/tree/main/example/girl/girl-w500-p5.png) | ![girl-w500-p10](https://github.com/kolelan/pexelizer/tree/main/example/girl/girl-w500-p10.png) | ![girl-w500-p15](https://github.com/kolelan/pexelizer/tree/main/example/girl/girl-w500-p15.png) |
 
 **Примечания:**
 1. Все изображения приведены к ширине 500px
