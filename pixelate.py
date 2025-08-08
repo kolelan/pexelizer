@@ -1,4 +1,5 @@
 import argparse
+import sys
 import os
 import json
 import base64
@@ -9,6 +10,10 @@ from sklearn.cluster import KMeans
 import cv2
 from collections import defaultdict
 
+# Настройка кодировки вывода для разных версий Python
+if sys.version_info[0] >= 3:
+    sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None
+os.environ["PYTHONIOENCODING"] = "utf-8"
 
 def resize_image(image, width=None, height=None, zoom=None):
     original_width, original_height = image.size
@@ -370,101 +375,132 @@ def generate_json_matrix(image, matrix_type='rgb'):
 
     return json_data
 
-
-def generate_txt_matrix(image, matrix_type='rgb'):
-    width, height = image.size
-    pixels = list(image.getdata())
-    txt_lines = []
-
-    if matrix_type == 'rgb':
-        txt_lines.append(f"# Размеры: ширина={width}, высота={height}")
-        for y in range(height):
-            line = []
-            for x in range(width):
-                pixel = pixels[y * width + x]
-                rgb_str = ",".join(map(str, pixel[:3]))
-                line.append(rgb_str)
-            txt_lines.append("   ".join(line))
-    elif matrix_type == 'hex':
-        txt_lines.append(f"# Размеры: {width}x{height}")
-        for y in range(height):
-            line = []
-            for x in range(width):
-                pixel = pixels[y * width + x]
-                hex_color = "#{:02x}{:02x}{:02x}".format(*pixel[:3])
-                line.append(hex_color)
-            txt_lines.append(" ".join(line))
-    elif matrix_type == 'ansi':
-        color_map = {
-            (255, 0, 0): "🟥",
-            (0, 255, 0): "🟩",
-            (0, 0, 255): "🟦",
-            (255, 255, 0): "🟨",
-            (0, 255, 255): "🟧",
-            (255, 0, 255): "🟪",
-            (255, 255, 255): "⬜",
-            (0, 0, 0): "⬛"
-        }
-        for y in range(height):
-            line = []
-            for x in range(width):
-                pixel = tuple(pixels[y * width + x][:3])
-                closest_color = min(color_map.keys(), key=lambda c: sum((a - b) ** 2 for a, b in zip(c, pixel)))
-                line.append(color_map[closest_color])
-            txt_lines.append(" ".join(line))
-    elif matrix_type == 'sdd':
-        density_chars = "@%#*+=-:. "
-        txt_lines.append(f"# Размеры: ширина={width}, высота={height}")
-        for y in range(height):
-            line = []
-            for x in range(width):
-                pixel = pixels[y * width + x]
-                gray_value = 0.299 * pixel[0] + 0.587 * pixel[1] + 0.114 * pixel[2]
-                char_index = int((gray_value / 255) * (len(density_chars) - 1))
-                line.append(density_chars[char_index])
-            txt_lines.append(" ".join(line))
-    elif matrix_type == 'sac':
-        color_chars = {
+def get_palette(palette_type='ansi'):
+    """Возвращает словарь с палитрой символов для заданного типа"""
+    palettes = {
+        'default': {
+            (0, 0, 0): '█',      # Черный
+            (255, 255, 255): ' ', # Белый
+            (255, 0, 0): 'R',     # Красный
+            (0, 255, 0): 'G',     # Зеленый
+            (0, 0, 255): 'B',     # Синий
+            (255, 255, 0): 'Y',   # Желтый
+            (255, 165, 0): 'O',   # Оранжевый
+            (128, 0, 128): 'P'    # Пурпурный
+        },
+        'ansi': {
+            (0, 0, 0): '⬛',
+            (255, 255, 255): '⬜',
+            (255, 0, 0): '🟥',
+            (0, 255, 0): '🟩',
+            (0, 0, 255): '🟦',
+            (255, 255, 0): '🟨',
+            (255, 165, 0): '🟧',
+            (128, 0, 128): '🟪'
+        },
+        'sdd': {  # Symbols of different densities
+            (0, 0, 0): '@',
+            (50, 50, 50): '#',
+            (100, 100, 100): '%',
+            (150, 150, 150): '*',
+            (200, 200, 200): '+',
+            (255, 255, 255): '.'
+        },
+        'sac': {  # Simplified ASCII characters
+            (0, 0, 0): 'K',
             (255, 0, 0): 'R',
             (0, 255, 0): 'G',
             (0, 0, 255): 'B',
             (255, 255, 0): 'Y',
-            (0, 255, 255): 'C',
             (255, 0, 255): 'M',
-            (255, 255, 255): 'W',
-            (0, 0, 0): 'K'
+            (0, 255, 255): 'C',
+            (255, 255, 255): 'W'
         }
-        for y in range(height):
-            line = []
-            for x in range(width):
-                pixel = tuple(pixels[y * width + x][:3])
-                closest_color = min(color_chars.keys(), key=lambda c: sum((a - b) ** 2 for a, b in zip(c, pixel)))
-                line.append(color_chars[closest_color])
-            txt_lines.append(" ".join(line))
+    }
+    return palettes.get(palette_type, palettes['ansi'])
 
-    return "\n".join(txt_lines)
+def get_closest_color(palette, pixel):
+    """Находит ближайший цвет в палитре к заданному пикселю"""
+    return min(palette.keys(), key=lambda c: sum((a - b) ** 2 for a, b in zip(c, pixel)))
 
 
-def print_console_preview(image):
+def generate_txt_matrix(image, matrix_type='ansi', block_width=10, block_height=10):
+    """Генерирует текстовую матрицу с одним символом на блок"""
     width, height = image.size
     pixels = list(image.getdata())
-    color_map = {
-        (255, 0, 0): "🟥",
-        (0, 255, 0): "🟩",
-        (0, 0, 255): "🟦",
-        (255, 255, 0): "🟨",
-        (0, 255, 255): "🟧",
-        (255, 0, 255): "🟪",
-        (255, 255, 255): "⬜",
-        (0, 0, 0): "⬛"
-    }
-    for y in range(height):
+    palette = get_palette(matrix_type)
+
+    lines = []
+    for y in range(0, height, block_height):
         line = []
-        for x in range(width):
-            pixel = tuple(pixels[y * width + x][:3])
-            closest_color = min(color_map.keys(), key=lambda c: sum((a - b) ** 2 for a, b in zip(c, pixel)))
-            line.append(color_map[closest_color])
-        print(" ".join(line))
+        for x in range(0, width, block_width):
+            # Усредняем цвет блока
+            r, g, b, count = 0, 0, 0, 0
+            for dy in range(block_height):
+                for dx in range(block_width):
+                    if y + dy < height and x + dx < width:
+                        pixel = pixels[(y + dy) * width + (x + dx)]
+                        r += pixel[0]
+                        g += pixel[1]
+                        b += pixel[2] if len(pixel) > 2 else 0
+                        count += 1
+
+            if count > 0:
+                avg_color = (r // count, g // count, b // count)
+                closest = get_closest_color(palette, avg_color)
+                line.append(palette[closest])
+        lines.append(' '.join(line))
+
+    return '\n'.join(lines)
+
+
+def print_console_preview(image, block_width=10, block_height=10):
+    """Выводит в консоль превью с одним символом на блок"""
+    width, height = image.size
+    pixels = list(image.getdata())
+    palette = get_palette('ansi')  # Для консоли всегда используем ANSI палитру
+
+    # Автоматическая подстройка под размер терминала
+    try:
+        import shutil
+        console_width = shutil.get_terminal_size().columns - 4
+        if width // block_width > console_width:
+            block_width = max(1, width // console_width)
+    except:
+        pass
+
+    # Формируем заголовок
+    header = f" Preview {width // block_width}x{height // block_height} "
+    border = '=' * len(header)
+    print(f"\n{border}\n{header}\n{border}")
+
+    # Генерируем и выводим превью
+    for y in range(0, height, block_height):
+        line = []
+        for x in range(0, width, block_width):
+            # Усредняем цвет блока
+            r, g, b, count = 0, 0, 0, 0
+            for dy in range(block_height):
+                for dx in range(block_width):
+                    if y + dy < height and x + dx < width:
+                        pixel = pixels[(y + dy) * width + (x + dx)]
+                        r += pixel[0]
+                        g += pixel[1]
+                        b += pixel[2] if len(pixel) > 2 else 0
+                        count += 1
+
+            if count > 0:
+                avg_color = (r // count, g // count, b // count)
+                closest = get_closest_color(palette, avg_color)
+                line.append(palette[closest])
+
+        # Вывод строки с обработкой ошибок кодировки
+        try:
+            print(''.join(line))
+        except UnicodeEncodeError:
+            print('*' * len(line))  # Фолбэк для терминалов без Unicode
+
+    print(border + "\n")
 
 
 def main():
@@ -573,14 +609,24 @@ def main():
     if args.matrix_txt:
         txt_data = generate_txt_matrix(pixelated, args.matrix_txt)
         txt_path = f"{output_filename}.txt"
-        with open(txt_path, 'w') as f:
-            f.write(txt_data)
-        print(f"TXT matrix saved to {txt_path}")
+        try:
+            with open(txt_path, 'w', encoding='utf-8') as f:  # Явно указываем UTF-8
+                f.write(txt_data)
+            print(f"TXT matrix saved to {txt_path}")
+        except Exception as e:
+            print(f"Error saving TXT matrix: {e}")
 
     # Print console preview if requested
     if args.console:
-        print("\nConsole preview:")
-        print_console_preview(pixelated)
+        try:
+            print('\n' + '=' * 50 + '\nConsole Preview:\n' + '=' * 50)
+            print_console_preview(pixelated)
+            print('=' * 50 + '\n')
+        except Exception as e:
+            print(f"\nError in console preview: {str(e)}")
+            print("Trying simplified output...")
+            # Фолбэк на ASCII-арт
+            pixelated.resize((50, 30)).convert('L').show()
 
 
 if __name__ == "__main__":
